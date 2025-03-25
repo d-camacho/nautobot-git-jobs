@@ -36,6 +36,19 @@ DEVICE_TYPES_YAML = [
           type: 1000base-t
           mgmt_only: true
     """,
+    """
+    manufacturer: Cisco
+    model: Nexus N9K-C9236C
+    part_number: N9K-C9236C
+    u_height: 1
+    is_full_depth: true
+    interfaces:
+        - pattern: "Ethernet1/[1-48]
+          type: 100gbase-x-qsfp28
+        - pattern: "mgmt0"
+          type: 1000base-t
+          mgmt_only: true
+    """
 ]
 
 
