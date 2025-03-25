@@ -5,6 +5,7 @@ from nautobot.apps.jobs import Job, register_jobs
 from nautobot.dcim.models import DeviceType, Manufacturer
 from nautobot.dcim.models.device_component_templates import InterfaceTemplate
 
+name = "Create Device Types"
 
 DEVICE_TYPES_YAML = [
     """
