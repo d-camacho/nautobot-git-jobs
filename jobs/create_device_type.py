@@ -1,4 +1,5 @@
 import re
+import yaml
 from itertools import product
 from nautobot.apps.jobs import Job, register_jobs
 from nautobot.dcim.models import DeviceType, Manufacturer
