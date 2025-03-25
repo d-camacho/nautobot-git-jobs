@@ -42,9 +42,6 @@ DEVICE_TYPES_YAML = [
     part_number: N9K-C9236C
     u_height: 1
     is_full_depth: true
-    console-ports:
-        - name: console
-          type: rj-45
     interfaces:
         - pattern: "Ethernet1/[1-48]"
           type: 100gbase-x-qsfp28
@@ -102,7 +99,7 @@ def create_device_types(logger):
 
         # Create DeviceType
         device_type_defaults = {
-            k: data[k] for k in ["part_number", "u_height", "is_full_depth", "comments", "console-ports"] if k in data
+            k: data[k] for k in ["part_number", "u_height", "is_full_depth", "comments"] if k in data
         }
         device_type_obj, created = DeviceType.objects.get_or_create(
             manufacturer=manufacturer_obj,
