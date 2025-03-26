@@ -43,6 +43,7 @@ DEVICE_TYPES_YAML = [
     part_number: N9K-C9236C
     u_height: 1
     is_full_depth: true
+    comments: 'Check Cisco Website for Info'
     interfaces:
         - pattern: "Ethernet1/[1-48]"
           type: 100gbase-x-qsfp28
