@@ -1,7 +1,7 @@
 import re
 import yaml
 from itertools import product
-from nautobot.apps.jobs import Job, register_jobs
+from nautobot.apps.jobs import Job, BooleanVar
 from nautobot.dcim.models import DeviceType, Manufacturer
 from nautobot.dcim.models.device_component_templates import InterfaceTemplate
 
@@ -54,97 +54,136 @@ DEVICE_TYPES_YAML = [
 
 def expand_interface_pattern(pattern):
     """
-    Expands an interface pattern like 'Ethernet[1-60]/[1-4]' into actual names.
-    
-    Supports:
-      - Single range: Ethernet[1-24] -> Ethernet1, Ethernet2, ..., Ethernet24
-      - Nested range: Ethernet[1-60]/[1-4] -> Ethernet1/1, Ethernet1/2, ..., Ethernet60/4
+    Expands an interface pattern into actual names with enhanced validation.
     """
     match = re.findall(r"\[([0-9]+)-([0-9]+)\]", pattern)
     if not match:
-        return [pattern]  # No expansion needed, return as-is.
+        return [pattern]
 
-    # Convert to lists of numbers
     try:
         ranges = [list(range(int(start), int(end) + 1)) for start, end in match]
-    except ValueError:
-        raise ValueError(f"Invalid range in pattern: {pattern}")
+    except ValueError as e:
+        raise ValueError(f"Invalid range in pattern {pattern}: {e}") from e
 
-    # Generate base name with placeholders
+    # Validate range order
+    for start, end in match:
+        if int(start) >= int(end):
+            raise ValueError(f"Invalid range {start}-{end} in {pattern}")
+
     base_name = re.sub(r"\[[0-9]+-[0-9]+\]", "{}", pattern, count=len(ranges))
-
-    # Expand using cartesian product
     return [base_name.format(*nums) for nums in product(*ranges)]
 
-
-
-def create_device_types(logger):
+def create_device_types(logger, dryrun=False):
     """
-    Create DeviceType objects from YAML definitions and add interfaces using InterfaceTemplate.
+    Creates DeviceType objects with transaction support and bulk operations.
     """
+    with transaction.atomic():
+        # Create savepoint if dryrun
+        sid = transaction.savepoint() if dryrun else None
 
-    for device_yaml in DEVICE_TYPES_YAML:
-        data = yaml.safe_load(device_yaml)
-
-        manufacturer_name = data.pop("manufacturer", None)
-        if not manufacturer_name:
-            logger.error("Manufacturer not provided in YAML definition.")
-            continue
-        manufacturer_obj, _ = Manufacturer.objects.get_or_create(name=manufacturer_name)
-
-        model_name = data.pop("model", None)
-        if not model_name:
-            logger.error("Model not provided in YAML for manufacturer %s", manufacturer_name)
-            continue
-
-        # Create DeviceType
-        device_type_defaults = {
-            k: data[k] for k in ["part_number", "u_height", "is_full_depth", "comments"] if k in data
-        }
-        device_type_obj, created = DeviceType.objects.get_or_create(
-            manufacturer=manufacturer_obj,
-            model=model_name,
-            defaults=device_type_defaults,
-        )
-
-        if created:
-            device_type_obj.validated_save()
-            logger.info(f"DeviceType created: {device_type_obj}")
-        else:
-            logger.info(f"DeviceType already exists: {device_type_obj}")
-
-        # Add interfaces using InterfaceTemplate
-        for iface in data.get("interfaces", []):
-            pattern = iface.get("pattern")
-            iface_type = iface.get("type")
-            mgmt_only = iface.get("mgmt_only", False)
-
-            if not pattern or not iface_type:
-                logger.error(f"Invalid interface definition in {model_name}: {iface}")
+        for device_yaml in DEVICE_TYPES_YAML:
+            try:
+                data = yaml.safe_load(device_yaml)
+            except yaml.YAMLError as e:
+                logger.error(f"YAML parsing error: {e}")
                 continue
 
-            # Generate interfaces from range patterns
-            interface_names = expand_interface_pattern(pattern)
-            for iface_name in interface_names:
-                interface_template, created = InterfaceTemplate.objects.get_or_create(
-                    device_type=device_type_obj,
-                    name=iface_name,
-                    defaults={
-                        "type": iface_type,
-                        "mgmt_only": mgmt_only,
-                    },
+            # Manufacturer validation
+            manufacturer_name = data.get("manufacturer")
+            if not manufacturer_name:
+                logger.error("Manufacturer not specified in YAML entry")
+                continue
+                
+            manufacturer = Manufacturer.objects.filter(name=manufacturer_name).first()
+            if not manufacturer:
+                logger.error(f"Manufacturer '{manufacturer_name}' not found. Create it first.")
+                continue
+
+            # DeviceType handling
+            model_name = data.get("model")
+            if not model_name:
+                logger.error(f"Missing model name for manufacturer {manufacturer_name}")
+                continue
+
+            device_type_defaults = {
+                k: data.get(k) 
+                for k in ["part_number", "u_height", "is_full_depth", "comments"]
+            }
+            device_type, created = DeviceType.objects.get_or_create(
+                manufacturer=manufacturer,
+                model=model_name,
+                defaults=device_type_defaults
+            )
+
+            if created:
+                logger.info(f"Created new DeviceType: {manufacturer.name} {model_name}")
+            else:
+                logger.info(f"Using existing DeviceType: {manufacturer.name} {model_name}")
+
+            # InterfaceTemplate bulk creation
+            interface_templates = []
+            for iface_def in data.get("interfaces", []):
+                pattern = iface_def.get("pattern")
+                iface_type = iface_def.get("type")
+                mgmt_only = iface_def.get("mgmt_only", False)
+
+                if not pattern or not iface_type:
+                    logger.error(f"Invalid interface definition in {model_name}: {iface_def}")
+                    continue
+
+                try:
+                    interface_names = expand_interface_pattern(pattern)
+                except ValueError as e:
+                    logger.error(f"Interface pattern error: {e}")
+                    continue
+
+                for name in interface_names:
+                    interface_templates.append(
+                        InterfaceTemplate(
+                            device_type=device_type,
+                            name=name,
+                            type=iface_type,
+                            mgmt_only=mgmt_only
+                        )
+                    )
+
+            if interface_templates:
+                created_count = 0
+                if not dryrun:
+                    # Bulk create with conflict ignoring
+                    results = InterfaceTemplate.objects.bulk_create(
+                        interface_templates,
+                        update_conflicts=False,
+                        unique_fields=["device_type", "name"],
+                        update_fields=[]
+                    )
+                    created_count = len(results)
+                else:
+                    created_count = len(interface_templates)
+                    
+                logger.info(
+                    f"Processed {len(interface_templates)} interfaces for {model_name} "
+                    f"({created_count} new)"
                 )
-                if created:
-                    logger.info(f"Added interface {iface_name} ({iface_type}) to {model_name}")
+
+        # Rollback if dryrun
+        if dryrun and sid:
+            transaction.savepoint_rollback(sid)
 
 class CreateDeviceType(Job):
     """
-    Calls on the previously defined functions to create device types with the interfaces
+    Creates device types from YAML definitions with dry-run support.
     """
+    dryrun = BooleanVar(
+        default=False,
+        description="Simulate changes without writing to database"
+    )
 
     class Meta:
-        name = "Bulk add device types"
+        name = "Bulk Add Device Types"
+        commit_default = False  # Encourage explicit saving
 
-    def run(self):
-        create_device_types(self.logger)
-
+    def run(self, dryrun):
+        self.logger.info(f"Starting device type import (dryrun: {dryrun})")
+        create_device_types(self.logger, dryrun=dryrun)
+        self.logger.info("Import process completed" + (" (dry run)" if dryrun else ""))
