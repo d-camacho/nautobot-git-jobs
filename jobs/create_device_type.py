@@ -1,6 +1,7 @@
 import re
 import yaml
 from itertools import product
+from django.db import transaction
 from nautobot.apps.jobs import Job, BooleanVar
 from nautobot.dcim.models import DeviceType, Manufacturer
 from nautobot.dcim.models.device_component_templates import InterfaceTemplate
