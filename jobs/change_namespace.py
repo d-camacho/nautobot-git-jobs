@@ -12,7 +12,7 @@ class ChangeNamespace(Job):
 
     namespace_list = Namespace.objects.filter(name__contains="TEST")
 
-    def run(self, namespace_list):
+    def run(self):
         for namespace in self.namespace_list:
             new_name = namespace.name.replace("TEST", "NEW")
             namespace.name = new_name
