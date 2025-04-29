@@ -3,7 +3,7 @@ from nautobot.apps.jobs import Job, register_jobs
 
 name = "Change Namespace Display"
 
-namespace_list = Namespace.objects.filter(name_containse="TEST")
+namespace_list = Namespace.objects.filter(name__contains="TEST")
 
 class ChangeNamespace(Job):
         
