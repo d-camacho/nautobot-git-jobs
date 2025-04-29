@@ -3,6 +3,7 @@ from nautobot.apps.jobs import Job, register_jobs
 
 name = "Change Namespace Display"
 
+namespace_list = Namespace.objects.filter(name_containse="TEST")
 
 class ChangeNamespace(Job):
         
@@ -10,12 +11,16 @@ class ChangeNamespace(Job):
         name = "Change Namespace Display"
         description = "Changes the display name to clean up Namespaces"
 
-    def run(self):
-        self.namespace_object = Namespace.objects.get(id="f5019028-3bdb-4fe7-a957-eb65f93405bd")
-        if self.namespace_object:
-            self.namespace_object.name = "TEST1"
-            self.namespace_object.save()
-        else:
-            self.logger.info("Namespace id not available")
+    def run(self, namespace_list):
+        for namespace in self.namespace_list:
+            new_name = namespace.name.replace("TEST", "NEW")
+            namespace.name = new_name
+            namespace.validated_save()  # Important: Save the changes to the database
+            self.logger.info(f"Updated namespace: {namespace.name}")
 
 register_jobs(ChangeNamespace)
+
+
+
+
+
