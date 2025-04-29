@@ -3,13 +3,14 @@ from nautobot.apps.jobs import Job, register_jobs
 
 name = "Change Namespace Display"
 
-namespace_list = Namespace.objects.filter(name__contains="TEST")
 
 class ChangeNamespace(Job):
         
     class Meta:
         name = "Change Namespace Display"
         description = "Changes the display name to clean up Namespaces"
+
+    namespace_list = Namespace.objects.filter(name__contains="TEST")
 
     def run(self, namespace_list):
         for namespace in self.namespace_list:
