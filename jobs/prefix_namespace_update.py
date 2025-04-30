@@ -25,7 +25,7 @@ class PrefixNamespaceUpdate(Job):
 
                 # Check if the namespace is already cached
                 if tenant.name not in namespace_cache:
-                    namespace_cache[tenant.name] = Namespace.objects.filter(name=tenant.name).first()
+                    namespace_cache[tenant.name] = Namespace.objects.get(name=tenant.name)
 
                 new_namespace = namespace_cache[tenant.name]
                 if not new_namespace:
