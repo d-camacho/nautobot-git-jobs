@@ -21,7 +21,7 @@ class PrefixNamespaceUpdate(Job):
                 self.logger.warning(f"Prefix {prefix} has no associated tenant.")
                 continue
             new_namespace = Namespace.objects.filter(name=tenant).first()
-            if not new_namespace.exists():
+            if not new_namespace:
                 self.logger.warning(f"No namespace found for tenant {tenant}.")
                 continue
             prefix.namespace = new_namespace
